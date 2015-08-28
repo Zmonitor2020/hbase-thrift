@@ -1,0 +1,157 @@
+#!/usr/bin/env bash
+# chkconfig: 345 95 20
+# description: hbase thrift
+# processname: ambari-agent
+
+# Licensed to the Apache Software Foundation (ASF) under one
+# or more contributor license agreements.  See the NOTICE file
+# distributed with this work for additional information
+# regarding copyright ownership.  The ASF licenses this file
+# to you under the Apache License, Version 2.0 (the
+# "License"); you may not use this file except in compliance
+# with the License.  You may obtain a copy of the License at
+#
+#     http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+HBASE_THRIFT=hbase-thrift
+PIDFILE=/var/run/$HBASE_THRIFT/$HBASE_THRIFT.pid
+
+run_as_user=`awk '/hbase.superuser/ {getline; print}' /etc/hbase/conf/hbase-site.xml | awk -F">" '{print $2}' | awk -F"<" '{print $1}'`
+
+if [ "$EUID" != `id -u $run_as_user` ] ; then
+  command_prefx="su - $run_as_user -c"
+else
+  command_prefx="bash -l -c"
+fi
+
+OUTFILE=/bigdata/$HBASE_THRIFT/log/hbase-thrift.out
+LOGFILE=/bigdata/$HBASE_THRIFT/log/hbase-thrift.log
+
+case "$1" in
+  start)
+echo "Checking for previously running hbase thrift server ..."
+        if [ -f $PIDFILE ]; then
+          PID=`cat $PIDFILE`
+          if ! (ps -p $PID >/dev/null 2>/dev/null); then
+            echo "$PIDFILE found with no process. Removing $PID..."
+            rm -f $PIDFILE
+          else
+            tput bold
+            echo "ERROR: $HBASE_THRIFT already running"
+            tput sgr0
+            echo "Check $PIDFILE for PID."
+            exit -1
+          fi
+        fi
+echo "Starting hbase thrift"
+        nohup $command_prefx "/usr/bin/hbase thrift $@"  > $OUTFILE 2>&1 &
+        sleep 3
+        ps aux | grep hbase | grep ThriftServer | grep -v grep  | awk '{print $2}' > $PIDFILE   
+        PID=$!
+        echo "Verifying $HBASE_THRIFT process status..."
+        if ! (ps -p $PID >/dev/null 2>/dev/null); then
+          if [ -s $OUTFILE ]; then
+            echo "ERROR: $HBASE_THRIFT start failed. For more details, see $OUTFILE:"
+            echo "===================="
+            tail -n 10 $OUTFILE
+            echo "===================="
+          else
+            echo "ERROR: $HBASE_THRIFT start failed"
+          fi
+          echo "hbase-thrift out at: $OUTFILE"
+          echo "hbase-thrift log at: $LOGFILE"
+          exit -1
+        fi
+        tput bold
+        echo "Hbase Thrift successfully started"
+        tput sgr0
+        echo "hbase-thrift PID at: $PIDFILE"
+        echo "hbase-thrift out at: $OUTFILE"
+        echo "hbase-thrift log at: $LOGFILE"
+        ;;
+
+  stop)
+
+echo "Checking for running hbase thrift server ..."
+process=$(ps aux | grep hbase | grep ThriftServer | grep -v grep  | awk '{print $2}')
+echo $process
+if [[ $? != 0 ]]; then
+    echo "Command failed."
+elif [[ -n $process ]]; then
+    echo "$HBASE_THRIFT running on $process and going to shutdown"
+    kill -9 $(ps aux | grep hbase | grep ThriftServer | grep -v grep  | awk '{print $2}')
+    rm -f $PIDFILE
+    echo "$HBASE_THRIFT is down"
+else
+    echo "No $HBASE_THRIFT running."
+            exit -1
+fi
+        ;;
+  restart)
+echo "Checking for running hbase thrift server ..."
+process=$(ps aux | grep hbase | grep ThriftServer | grep -v grep  | awk '{print $2}')
+echo $process
+if [[ $? != 0 ]]; then
+    echo "Command failed."
+elif [[ -n $process ]]; then
+    echo "$HBASE_THRIFT running on $process and going to shutdown"
+    kill -9 $(ps aux | grep hbase | grep ThriftServer | grep -v grep  | awk '{print $2}')
+    rm -f $PIDFILE
+    echo "$HBASE_THRIFT is down"
+else
+    echo "No $HBASE_THRIFT running."
+            exit -1
+fi
+echo "Checking for previously running hbase thrift server ..."
+        if [ -f $PIDFILE ]; then
+          PID=`cat $PIDFILE`
+          if ! (ps -p $PID >/dev/null 2>/dev/null); then
+            echo "$PIDFILE found with no process. Removing $PID..."
+            rm -f $PIDFILE
+          else
+            tput bold
+            echo "ERROR: $HBASE_THRIFT already running"
+            tput sgr0
+            echo "Check $PIDFILE for PID."
+            exit -1
+          fi
+        fi
+echo "Starting hbase thrift"
+        nohup $command_prefx "/usr/bin/hbase thrift start"  > $OUTFILE 2>&1 &
+        sleep 3
+        ps aux | grep hbase | grep ThriftServer | grep -v grep  | awk '{print $2}' > $PIDFILE
+        PID=$!
+        echo "Verifying $HBASE_THRIFT process status..."
+        if ! (ps -p $PID >/dev/null 2>/dev/null); then
+          if [ -s $OUTFILE ]; then
+            echo "ERROR: $HBASE_THRIFT start failed. For more details, see $OUTFILE:"
+            echo "===================="
+            tail -n 10 $OUTFILE
+            echo "===================="
+          else
+            echo "ERROR: $HBASE_THRIFT start failed"
+          fi
+          echo "hbase-thrift out at: $OUTFILE"
+          echo "hbase-thrift log at: $LOGFILE"
+          exit -1
+        fi
+        tput bold
+        echo "Hbase Thrift successfully started"
+        tput sgr0
+        echo "hbase-thrift PID at: $PIDFILE"
+        echo "hbase-thrift out at: $OUTFILE"
+        echo "hbase-thrift log at: $LOGFILE"
+
+        ;;
+  *)
+        echo "Usage: $0 {start|stop|restart <server_hostname>}"
+        exit 1
+esac
+
+exit 0
